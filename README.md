@@ -1,223 +1,323 @@
-# OpenCare: Open-Source Hospital Coordination System
+# OpenCare
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Built with Flutter](https://img.shields.io/badge/Flutter-3.x-blue.svg)](https://flutter.dev)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688.svg)](https://fastapi.tiangolo.com)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791.svg)](https://www.postgresql.org)
+> **Note on commit history**: Due to a GitHub issue where commits made in feature branches were not being reflected on my contribution graph, I committed all changes directly to `main` today. All work was done progressively — the single commit represents the full project, not a one-day build.
 
-OpenCare is a fully open-source, self-hosted hospital coordination platform built for FOSS Hack 2026. It enables real-time collaboration for doctors, nurses, and administrators through a Flutter client application backed by a FastAPI service and PostgreSQL database.
+OpenCare is a full-stack hospital coordination system consisting of:
 
-## Overview
+- A **FastAPI** backend (REST API) backed by **PostgreSQL**
+- A **Flutter** client app (mobile/web) with role-based dashboards (admin, nurse, doctor, patient)
 
-OpenCare provides core hospital workflow capabilities:
+This repository is intended for local development and demonstrations, with Docker Compose providing a repeatable backend + database environment.
 
-- Role-based dashboards for nurse, doctor, and administrator users
-- Patient admission and ward/bed management
-- Vitals recording with status alerting support
-- Medication prescription and administration tracking
-- Per-patient staff messaging and ward-level task management
-- Audit logging and staff/configuration controls
+## Contents
+
+- [Architecture](#architecture)
+- [Technology Stack](#technology-stack)
+- [Project Tree](#project-tree)
+- [Module Documentation](#module-documentation)
+- [Quick Start (Docker)](#quick-start-recommended-docker)
+- [Running Locally Without Docker](#running-locally-without-docker-backend)
+- [Running the Flutter App](#running-the-flutter-app)
+- [Environment Variables](#environment-variables)
+- [Database: Seed and Reset](#database-seed-and-reset)
+- [API Reference](#api-reference)
+- [Common Workflows](#common-workflows)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
 
 ## Architecture
 
-The platform uses a simple local stack:
+```
+Flutter App  ──HTTP──▶  FastAPI Backend  ──SQLAlchemy──▶  PostgreSQL
+```
 
-- Flutter app (mobile/web client)
-- FastAPI backend (Python 3.11)
-- PostgreSQL database (Docker)
+- **PostgreSQL** stores all system data: users, patients, vitals, medications, tasks, appointments, messages, audit logs, and emergency escalations.
+- **FastAPI backend** exposes REST endpoints for authentication and all clinical/workflow modules.
+- **Flutter app** talks to the backend over HTTP and routes users to role-specific dashboards after login.
 
-All backend services run locally through Docker Compose.
+The backend auto-creates tables on startup and seeds demo data on first run when the database is empty.
 
-## Quick Start
+---
+
+## Technology Stack
+
+**Backend**
+- Python 3.11 (`python:3.11-slim` Docker image)
+- FastAPI + Uvicorn
+- SQLAlchemy (ORM)
+- PostgreSQL driver: `psycopg2-binary`
+- JWT auth via `python-jose`
+- Pydantic v2 + `pydantic-settings`
+
+**Database**
+- PostgreSQL 15 (`postgres:15-alpine`)
+
+**Frontend**
+- Flutter (Dart SDK `^3.5.0`)
+- Provider (state management)
+- HTTP (networking)
+
+---
+
+## Project Tree
+
+```text
+OPENCARE/
+├─ .env.example
+├─ docker-compose.yml
+├─ seed_db.sql
+├─ reset_db.sql
+├─ CONTRIBUTING.md
+├─ LICENSE
+├─ backend/
+│  ├─ Dockerfile
+│  ├─ requirements.txt
+│  ├─ seed_db.sql
+│  └─ app/
+│     ├─ main.py
+│     ├─ config.py
+│     ├─ database.py
+│     ├─ auth.py
+│     ├─ models.py
+│     ├─ schemas.py
+│     └─ routes/
+│        ├─ auth_routes.py
+│        ├─ patients.py
+│        ├─ vitals.py
+│        ├─ medications.py
+│        ├─ messages.py
+│        ├─ tasks.py
+│        ├─ appointments.py
+│        ├─ emergencies.py
+│        ├─ staff_config.py
+│        ├─ audit_logs.py
+│        └─ patient_portal.py
+└─ flutter_app/
+   ├─ pubspec.yaml
+   └─ lib/
+      ├─ main.dart
+      ├─ config/
+      │  ├─ api_config.dart
+      │  ├─ app_theme.dart
+      │  ├─ routes.dart
+      │  └─ constants.dart
+      ├─ models/
+      ├─ providers/
+      ├─ screens/
+      │  ├─ login_screen.dart
+      │  ├─ settings_screen.dart
+      │  ├─ splash_screen.dart
+      │  ├─ admin/
+      │  ├─ doctor/
+      │  ├─ nurse/
+      │  └─ patient/
+      ├─ services/
+      │  ├─ auth_service.dart
+      │  └─ database_service.dart
+      ├─ utils/
+      └─ widgets/
+```
+
+---
+
+## Module Documentation
+
+| Module | README |
+|--------|--------|
+| Backend (FastAPI) | [`backend/README.md`](./backend/README.md) |
+| Flutter App | [`flutter_app/README.md`](./flutter_app/README.md) |
+
+---
+
+## Quick Start (Recommended: Docker)
 
 ### Prerequisites
 
-- Docker Desktop with Docker Compose
-- Flutter SDK 3.5+
-- Android Studio (emulator) or a physical Android device
+- Docker Desktop (with Docker Compose)
+- Flutter SDK (to run the client app)
 
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/YOUR_USERNAME/opencare.git
-cd opencare
-```
-
-### 2. Configure Environment Variables
-
-Create `.env` from `.env.example`:
+### Steps
 
 ```bash
+# 1. Copy environment file
 cp .env.example .env
-```
 
-Default values in `.env.example`:
-
-| Variable | Default |
-|---|---|
-| `POSTGRES_USER` | `hospital` |
-| `POSTGRES_PASSWORD` | `hospital123` |
-| `POSTGRES_DB` | `hospital_db` |
-| `POSTGRES_PORT` | `5433` |
-| `FASTAPI_PORT` | `8000` |
-| `SECRET_KEY` | `opencare-super-secret-key-change-in-production` |
-
-### 3. Start Backend Services
-
-```bash
+# 2. Start PostgreSQL + FastAPI
 docker-compose up -d --build
-```
 
-Verify containers:
-
-```bash
+# 3. Confirm containers are running
 docker-compose ps
 ```
 
-Verify API:
+### Verify
+
+| Service | URL |
+|---------|-----|
+| API root | `http://localhost:8000/` |
+| Swagger UI | `http://localhost:8000/docs` |
+
+---
+
+## Running Locally Without Docker (Backend)
+
+### Prerequisites
+
+- Python 3.11+
+- PostgreSQL 15+
+
+### Setup
 
 ```bash
-curl http://localhost:8000/
+cd backend
+python -m venv .venv
+
+# Windows (PowerShell)
+.venv\Scripts\Activate.ps1
+
+pip install -r requirements.txt
 ```
 
-API documentation:
+### Run
 
-- http://localhost:8000/docs
+```bash
+# Set your database URL
+set DATABASE_URL=postgresql://hospital:hospital123@localhost:5432/hospital_db
 
-### 4. Run the Flutter Application
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+---
+
+## Running the Flutter App
+
+### Install dependencies
 
 ```bash
 cd flutter_app
 flutter pub get
+```
+
+### Configure API Base URL
+
+Edit `flutter_app/lib/config/api_config.dart`:
+
+| Target | URL |
+|--------|-----|
+| Android emulator | `http://10.0.2.2:8000` |
+| Web / localhost | `http://localhost:8000` |
+| Physical device (USB) | Run `adb reverse tcp:8000 tcp:8000`, then use `http://localhost:8000` |
+
+### Run
+
+```bash
+# Web
+flutter run -d chrome
+
+# Android (emulator or device)
 flutter run
 ```
 
-For Android emulators, use `http://10.0.2.2:8000` as the backend URL. For physical devices, update `flutter_app/lib/config/api_config.dart` to use your machine's LAN IP.
+---
 
-### 5. Optional: Reset the Database
+## Environment Variables
+
+Create `.env` from `.env.example`. Required variables:
+
+| Variable | Description |
+|----------|-------------|
+| `POSTGRES_USER` | PostgreSQL username |
+| `POSTGRES_PASSWORD` | PostgreSQL password |
+| `POSTGRES_DB` | Database name |
+| `POSTGRES_PORT` | Host port mapped to container 5432 |
+| `DATABASE_URL` | Full connection string used by the backend |
+| `FASTAPI_PORT` | Host port for FastAPI |
+| `SECRET_KEY` | JWT signing secret |
+
+---
+
+## Database: Seed and Reset
+
+### Auto-seed
+
+On backend startup, if the `users` table is empty, the backend loads `/app/seed_db.sql` and inserts demo data automatically.
+
+### Demo Accounts
+
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | `admin@geu.ac.in` | `123456` |
+| Doctor | `doctor@geu.ac.in` | `123456` |
+| Nurse | `nurse@geu.ac.in` | `123456` |
+
+### Reset the Database
 
 ```bash
 docker exec -i opencare-postgres psql -U hospital -d hospital_db < reset_db.sql
 docker-compose restart backend
 ```
 
-## Detailed Run Guide
+---
 
-For complete Windows-focused setup and troubleshooting, see [HOW_TO_RUN.md](HOW_TO_RUN.md).
+## API Reference
 
-## Project Structure
+**Base URL**: `http://localhost:8000`
 
-```text
-OPENCARE/
-|-- backend/
-|   |-- Dockerfile
-|   |-- requirements.txt
-|   `-- app/
-|       |-- main.py
-|       |-- config.py
-|       |-- database.py
-|       |-- models.py
-|       |-- schemas.py
-|       |-- auth.py
-|       `-- routes/
-|-- flutter_app/
-|   |-- pubspec.yaml
-|   `-- lib/
-|-- docker-compose.yml
-|-- reset_db.sql
-|-- seed_db.sql
-`-- README.md
-```
+**Docs**: Swagger UI at `GET /docs` · OpenAPI JSON at `GET /openapi.json`
 
-## API Endpoints
+| Module | Route Prefix |
+|--------|-------------|
+| Authentication | `/auth/*` |
+| Patients | `/patients/*` |
+| Vitals | `/vitals/*` |
+| Medications | `/medications/*` |
+| Tasks | `/tasks/*` |
+| Messages | `/messages/*` |
+| Appointments | `/appointments/*` |
+| Emergencies | `/emergencies/*` |
+| Audit Logs | `/audit/*` |
+| Patient Portal | `/patient-portal/*` |
+| Staff / Config | `/staff/*`, `/config` |
+| Seed Export | `GET /export-seed` |
 
-### Authentication
+---
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/auth/signup` | Register a new staff member |
-| `POST` | `/auth/login` | Log in and receive JWT |
-| `GET` | `/auth/me` | Get current user profile |
-| `PATCH` | `/auth/me` | Update current user profile |
-| `POST` | `/auth/logout` | Set user offline |
+## Common Workflows
 
-### Patients
+### Add a new backend module
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/patients` | List patients (filter by ward, doctor, status) |
-| `GET` | `/patients/{id}` | Get one patient |
-| `GET` | `/patients/ward/{w}/bed/{b}` | Lookup by ward and bed |
-| `POST` | `/patients` | Admit a new patient |
-| `PUT` | `/patients/{id}` | Update patient details |
+1. Create a router in `backend/app/routes/`
+2. Register it in `backend/app/main.py` via `app.include_router(...)`
+3. Add models in `backend/app/models.py`
+4. Add schemas in `backend/app/schemas.py`
 
-### Vitals
+### Add or update Flutter screens
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/vitals/{patient_id}` | Vitals history |
-| `GET` | `/vitals/{patient_id}/latest` | Latest vitals |
-| `POST` | `/vitals` | Record vitals |
+- UI lives under `flutter_app/lib/screens/` grouped by role (`admin/`, `doctor/`, `nurse/`, `patient/`)
+- API calls go in `flutter_app/lib/services/`
+- Base URL config is in `flutter_app/lib/config/api_config.dart`
 
-### Medications
+---
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/medications/{patient_id}` | List patient medications |
-| `GET` | `/medications/{patient_id}/pending` | List pending medications |
-| `POST` | `/medications` | Prescribe medication |
-| `PATCH` | `/medications/{id}/administer` | Mark medication administered |
+## Troubleshooting
 
-### Messages
+**Flutter can't reach the backend**
+- Android emulator: use `10.0.2.2` not `localhost`
+- Physical device: run `adb reverse tcp:8000 tcp:8000` or set the base URL to your machine's LAN IP
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/messages/{patient_id}` | Patient message thread |
-| `GET` | `/messages/unread/count` | Unread message count |
-| `POST` | `/messages` | Send message |
-| `PATCH` | `/messages/{id}/read` | Mark message as read |
+**Database changes not reflected**
+- Run the reset script (`reset_db.sql`) and restart the backend container to re-trigger auto-seed
 
-### Tasks
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/tasks/ward/{ward_number}` | Ward tasks |
-| `POST` | `/tasks` | Create task |
-| `PATCH` | `/tasks/{id}` | Update completion state |
-| `DELETE` | `/tasks/{id}` | Delete task |
-
-### Staff and Configuration
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/staff` | List active staff |
-| `GET` | `/staff/doctors` | List doctors |
-| `GET` | `/staff/nurses` | List nurses |
-| `DELETE` | `/staff/{id}` | Remove staff (admin) |
-| `GET` | `/config` | Get hospital configuration |
-| `PUT` | `/config` | Update hospital configuration (admin) |
-
-## Technology Stack
-
-| Layer | Technology |
-|---|---|
-| Mobile App | Flutter (Dart) |
-| State Management | Provider |
-| Backend API | FastAPI |
-| ORM | SQLAlchemy |
-| Database | PostgreSQL |
-| Containerization | Docker and Docker Compose |
-| Authentication | JWT (`python-jose`) |
+---
 
 ## Contributing
 
-1. Fork the repository.
-2. Create a feature branch: `git checkout -b feature/my-feature`.
-3. Commit your changes: `git commit -m "Add my feature"`.
-4. Push your branch: `git push origin feature/my-feature`.
-5. Open a pull request.
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for development guidelines, recommended tooling, and project structure notes.
+
+---
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
+MIT License — see [`LICENSE`](./LICENSE).
